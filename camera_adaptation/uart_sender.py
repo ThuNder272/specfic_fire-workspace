@@ -49,23 +49,36 @@ def build_armor_packet(
     armor_cmd=0x01,
     fire_cmd=0x00,
     angle_scale=ANGLE_SCALE_DEFAULT,
+    tx_timestamp_ms=None,
 ):
-    """构造12字节协议：
-    DATA[0]=0x43
-    DATA[1]=装甲板检验指令（默认0x00）
-    DATA[2]=开火指令（默认0x00）
+    """构造16字节协议（含视觉时间戳）：
+    DATA[0]  =0x43
+    DATA[1]  =装甲板检验指令（默认0x00）
+    DATA[2]  =开火指令（默认0x00）
     DATA[3..4]=Yaw(centideg) 小端 低8/高8（有符号）
     DATA[5..6]=Pitch(centideg) 小端 低8/高8（有符号）
     DATA[7..8]=x 像素坐标 小端（无符号）
     DATA[9..10]=y 像素坐标 小端（无符号）
-    DATA[11]=帧尾（0xFF，与 k5.py 一致）
+    DATA[11..14]=视觉发送时间戳 uint32 毫秒 小端
+                 电控原样回传到 IMU 反馈包，用于计算单程延迟
+    DATA[15]=帧尾（0xFF）
     """
+    import time as _time
     yaw_scaled = int(np.round(yaw_deg * angle_scale))
     pitch_scaled = int(np.round(pitch_deg * angle_scale))
     yaw_lo, yaw_hi = _to_int16_signed_le(yaw_scaled)
     pitch_lo, pitch_hi = _to_int16_signed_le(pitch_scaled)
     x_lo, x_hi = _to_uint16_le(armor_x)
     y_lo, y_hi = _to_uint16_le(armor_y)
+
+    if tx_timestamp_ms is None:
+        ts = int(_time.time() * 1000) & 0xFFFFFFFF
+    else:
+        ts = int(tx_timestamp_ms) & 0xFFFFFFFF
+    ts0 = ts & 0xFF
+    ts1 = (ts >> 8) & 0xFF
+    ts2 = (ts >> 16) & 0xFF
+    ts3 = (ts >> 24) & 0xFF
 
     packet = [
         HEADER_BYTE,
@@ -75,6 +88,7 @@ def build_armor_packet(
         pitch_lo, pitch_hi,
         x_lo, x_hi,
         y_lo, y_hi,
+        ts0, ts1, ts2, ts3,
         TAIL_BYTE,
     ]
     return bytes(packet)

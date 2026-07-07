@@ -126,6 +126,29 @@ def _parse_args():
         dest="ec_feedback",
         help="禁用电控回传角域补偿",
     )
+    parser.add_argument(
+        "--latency-viz",
+        action="store_true",
+        default=True,
+        help="显示中间过程延迟可视化(蓝=视觉目标值 绿=电机真实值)曲线(默认开启)",
+    )
+    parser.add_argument(
+        "--no-latency-viz",
+        action="store_false",
+        dest="latency_viz",
+        help="关闭中间过程延迟可视化曲线",
+    )
+    parser.add_argument(
+        "--latency-viz-window-s",
+        type=float,
+        default=5.0,
+        help="延迟可视化曲线的滚动时间窗口(秒)",
+    )
+    parser.add_argument(
+        "--latency-viz-csv",
+        default=None,
+        help="将目标值/真实值时序写入CSV(供VOFA+/离线绘图)，例如 latency_viz.csv",
+    )
     parser.add_argument("--ec-invert-yaw", action="store_true", default=False, help="反转电控回传yaw方向")
     parser.add_argument("--ec-invert-pitch", action="store_true", default=False, help="反转电控回传pitch方向")
     parser.add_argument("--ec-t0-ms", type=float, default=20.0, help="yaw_v*t0 补偿时间常数(ms)")
@@ -513,6 +536,9 @@ def main():
         record_fourcc=args.record_fourcc,
         rate_fast_alpha=args.rate_fast_alpha,
         rate_slow_alpha=args.rate_slow_alpha,
+        latency_viz=args.latency_viz,
+        latency_viz_window_s=args.latency_viz_window_s,
+        latency_viz_csv=args.latency_viz_csv,
     )
     return pipeline.run()
 

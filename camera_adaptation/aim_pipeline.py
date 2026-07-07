@@ -34,6 +34,7 @@ from camera_adaptation.pnp_solver import (
     TargetGeometry,
 )
 from camera_adaptation.uart_sender import build_armor_packet
+from camera_adaptation.latency_plot import LatencyPlot
 from coordinate_prediction_model import CoordinatePredictionModel
 
 try:
@@ -212,6 +213,9 @@ class AimPipeline:
         rate_fast_alpha: float = 0.25,
         rate_slow_alpha: float = 0.08,
         max_ec_lead_deg: float = 20.0,
+        latency_viz: bool = True,
+        latency_viz_window_s: float = 5.0,
+        latency_viz_csv: Optional[str] = None,
     ):
         self.cv_threads = max(0, int(cv_threads))
         self.torch_threads = max(0, int(torch_threads))
@@ -343,10 +347,18 @@ class AimPipeline:
         self._last_fire_ts = time.time()
         self._last_fire_reason = "INIT"
 
+        self.latency_viz_enabled = bool(latency_viz)
+        self._latency_plot = LatencyPlot(
+            enabled=self.latency_viz_enabled,
+            window_seconds=float(latency_viz_window_s),
+            csv_path=latency_viz_csv,
+        )
+
         self._ec_thread = None
         self._ec_stop_event = threading.Event()
         self._ec_lock = threading.Lock()
         self._ec_latest = None  # (yaw_deg, pitch_deg, yaw_rate_dps, pitch_rate_dps, mode, shoot, ts)
+        self._ec_latest_latency_ms = -1.0  # one-way transport latency (requires EC fw echo)
         self._ec_last_ts = None
         self._ec_last_yaw_wrapped = None
         self._ec_last_pitch_wrapped = None
@@ -715,6 +727,9 @@ class AimPipeline:
     def _build_display_snapshot(self, frame: np.ndarray) -> dict:
         return {
             "frame": frame,
+            "latency_target_info": self._latest_prediction_info,
+            "latency_wall_time_s": time.time(),
+            "latency_transport_ms": self._get_ec_latency_ms(),
             "detection_bbox": tuple(self._latest_detection_bbox) if self._latest_detection_bbox is not None else None,
             "detection_conf": self._latest_detection_conf,
             "prediction_bbox": tuple(self._latest_prediction_bbox) if self._latest_prediction_bbox is not None else None,
@@ -916,7 +931,80 @@ class AimPipeline:
                 f"D2H:{snapshot['pred_d2h_ms']:.1f}"
             )
             cv2.putText(drawn, pred_text, (10, 340), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2)
+
+        self._update_latency_plot(snapshot, drawn)
         return drawn, (time.perf_counter() - draw_start) * 1000.0
+
+    def _update_latency_plot(self, snapshot: dict, drawn: np.ndarray):
+        # Middle-process latency sample: TARGET (vision-sent) vs REAL (motor feedback).
+        # The EC-received value (the third conceptual point) is not measurable until
+        # the EC board echoes the vision send-timestamp back; see LatencyPlot.
+        if not self._latency_plot.active():
+            return
+
+        info = snapshot.get("latency_target_info")
+        if info is not None:
+            target_yaw = float(info[0])
+            target_pitch = float(info[1])
+            has_target = str(info[4]) != "HOLD"
+        else:
+            target_yaw = 0.0
+            target_pitch = 0.0
+            has_target = False
+
+        t_s = snapshot.get("latency_wall_time_s") or time.time()
+        real_yaw = 0.0
+        real_pitch = 0.0
+        feedback_valid = False
+        ec = snapshot.get("ec_feedback")
+        if ec is not None and abs(t_s - float(ec[-1])) <= 0.2:
+            real_yaw = float(ec[0])
+            real_pitch = float(ec[1])
+            feedback_valid = True
+
+        transport_ms = snapshot.get("latency_transport_ms", -1.0) or -1.0
+        self._latency_plot.push(
+            t_seconds=t_s,
+            has_target=has_target,
+            feedback_valid=feedback_valid,
+            target_yaw=target_yaw,
+            target_pitch=target_pitch,
+            real_yaw=real_yaw,
+            real_pitch=real_pitch,
+            transport_latency_ms=transport_ms,
+        )
+        self._latency_plot.draw(drawn)
+
+    def _log_latency_sample_headless(self, now: float):
+        info = self._latest_prediction_info
+        if info is not None:
+            target_yaw = float(info[0])
+            target_pitch = float(info[1])
+            has_target = str(info[4]) != "HOLD"
+        else:
+            target_yaw = 0.0
+            target_pitch = 0.0
+            has_target = False
+
+        real_yaw = 0.0
+        real_pitch = 0.0
+        feedback_valid = False
+        ec = self._get_ec_feedback()
+        if ec is not None and abs(now - float(ec[-1])) <= 0.2:
+            real_yaw = float(ec[0])
+            real_pitch = float(ec[1])
+            feedback_valid = True
+
+        self._latency_plot.push(
+            t_seconds=now,
+            has_target=has_target,
+            feedback_valid=feedback_valid,
+            target_yaw=target_yaw,
+            target_pitch=target_pitch,
+            real_yaw=real_yaw,
+            real_pitch=real_pitch,
+            transport_latency_ms=self._get_ec_latency_ms(),
+        )
 
     def _publish_display_snapshot(self, frame: np.ndarray):
         snapshot = self._build_display_snapshot(frame)
@@ -1271,6 +1359,17 @@ class AimPipeline:
         with self._ec_lock:
             return self._ec_latest
 
+    def _get_ec_latency_ms(self) -> float:
+        with self._ec_lock:
+            return self._ec_latest_latency_ms
+
+    # IMU feedback packet constants (0xAC format, 16 bytes).
+    _IMU_SOF = 0xAC
+    _IMU_VERSION = 0x01
+    _IMU_EOF = 0xCA
+    _IMU_PKT_SIZE = 16
+    _IMU_QUAT_VALID_MASK = 0x01
+
     def _ec_feedback_worker(self):
         buf = bytearray()
         while not self._ec_stop_event.is_set():
@@ -1291,12 +1390,51 @@ class AimPipeline:
 
             buf.extend(data)
             while len(buf) >= 8:
-                sof_idx = buf.find(b"\xAA")
+                # Find next known SOF byte (0xAA legacy or 0xAC IMU).
+                sof_idx = -1
+                for i in range(len(buf)):
+                    if buf[i] in (0xAA, 0xAC):
+                        sof_idx = i
+                        break
                 if sof_idx < 0:
                     buf.clear()
                     break
                 if sof_idx > 0:
                     del buf[:sof_idx]
+                if not buf:
+                    break
+
+                # ---- 0xAC IMU packet (16 bytes, contains echoed TX timestamp) ----
+                if buf[0] == self._IMU_SOF:
+                    if len(buf) < self._IMU_PKT_SIZE:
+                        break  # wait for more data
+                    if buf[1] != self._IMU_VERSION or buf[self._IMU_PKT_SIZE - 1] != self._IMU_EOF:
+                        del buf[0:1]
+                        continue
+
+                    now = time.time()
+                    frame = bytes(buf[:self._IMU_PKT_SIZE])
+                    del buf[:self._IMU_PKT_SIZE]
+
+                    # buf[2..5] = echoed TX timestamp (uint32, ms, little-endian).
+                    # When the EC firmware has been updated, this is the vision
+                    # send-timestamp we embedded in the TX packet, so we can compute
+                    # one-way transport latency: (now_ms - tx_ts_ms) / 2.
+                    tx_ts_ms = (
+                        int(frame[2]) |
+                        (int(frame[3]) << 8) |
+                        (int(frame[4]) << 16) |
+                        (int(frame[5]) << 24)
+                    )
+                    now_ms = int(now * 1000) & 0xFFFFFFFF
+                    # Handle uint32 wrap-around; sanity-check round-trip < 2000 ms.
+                    elapsed_ms = (now_ms - tx_ts_ms) & 0xFFFFFFFF
+                    if 0 < elapsed_ms < 2000:
+                        with self._ec_lock:
+                            self._ec_latest_latency_ms = elapsed_ms / 2.0
+                    continue
+
+                # ---- 0xAA legacy packet (8 bytes) ----
                 if len(buf) < 8:
                     break
                 if buf[7] != 0xBB:
@@ -3218,6 +3356,10 @@ class AimPipeline:
                                 f"mode={mode} shoot={shoot}"
                             )
                     win_start = now
+                # Headless CSV logging: the display worker (which drives the overlay
+                # sampling) does not run without a window, so feed the latency log here.
+                if not self.show_window and self._latency_plot.active():
+                    self._log_latency_sample_headless(now)
                 self._record_perf_sample(detection is not None)
                 self._maybe_log_perf(now)
 
@@ -3234,6 +3376,10 @@ class AimPipeline:
                     cv2.destroyAllWindows()
                 except Exception:
                     pass
+            try:
+                self._latency_plot.close()
+            except Exception:
+                pass
             self._close_resources()
         return 0
 
