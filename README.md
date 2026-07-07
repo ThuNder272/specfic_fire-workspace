@@ -203,6 +203,58 @@ python aim_scheduler.py --port /dev/ttyUSB0 --baud 115200 --rate 50 --show-windo
 > 可用 `--lost-threshold` 设置连续丢失多少次后进入扫描模式（默认 30）。
 > 开火门控参数：`--fire-confidence-threshold`（高于阈值开火）与 `--fire-force-interval-ms`（低置信度时保底间隔，默认 1000ms；仅在有预测结果时生效）。
 
+#### 📈 中间过程延迟可视化
+
+用于排查自瞄跟随延迟、一顿一顿的问题。画面右上角显示：
+
+- **蓝色曲线**：视觉发送的目标 yaw/pitch
+- **绿色曲线**：电机真实反馈 yaw/pitch
+- **latency=XX.Xms**：单程通信延迟（需电控回传视觉时间戳）
+
+默认开启，带显示窗口直接运行：
+
+```bash
+python aim_scheduler.py \
+  --port /dev/ttyUSB0 --baud 115200 --rate 50 \
+  --show-window
+```
+
+哨兵常用示例：
+
+```bash
+python aim_scheduler.py \
+  --port /dev/ttyTHS1 --baud 115200 --rate 50 \
+  --show-window \
+  --target-color red \
+  --system-latency-ms 255
+```
+
+关闭可视化：
+
+```bash
+python aim_scheduler.py --port /dev/ttyUSB0 --no-latency-viz --show-window
+```
+
+调整滚动窗口或导出 CSV（供 VOFA+ / 离线分析）：
+
+```bash
+python aim_scheduler.py \
+  --port /dev/ttyUSB0 --baud 115200 --rate 50 \
+  --show-window \
+  --latency-viz-window-s 10.0 \
+  --latency-viz-csv latency_viz.csv
+```
+
+无显示窗口时也可只记 CSV：
+
+```bash
+python aim_scheduler.py \
+  --port /dev/ttyUSB0 --no-show-window \
+  --latency-viz-csv latency_viz.csv
+```
+
+> **电控配合**：视觉 TX 包已在 bytes[11..14] 嵌入发送时间戳。电控需在 IMU 反馈包（0xAC）bytes[2..5] 原样回传，画面上才会显示 `latency=XX.Xms`。
+
 #### 🔧 固定串口发送（调试）
 ```bash
 python camera_adaptation/uart_sender.py --port /dev/ttyUSB0 --baud 115200 --rate 50
