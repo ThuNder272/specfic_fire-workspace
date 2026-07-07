@@ -1,0 +1,8 @@
+This runtime contains a minimal inference-only adaptation derived from
+RM_4-points_yolov5-master in this workspace.
+
+The copied/adapted logic is limited to loading the legacy 4-point YOLOv5
+weights and running inference/post-processing inside this project.
+
+Keep the original upstream license obligations in mind if you redistribute
+this project with the embedded runtime.

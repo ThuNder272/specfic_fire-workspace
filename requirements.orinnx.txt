@@ -1,0 +1,38 @@
+# Orin NX / JetPack 6.0 / Python 3.10
+#
+# This file captures the pip-installed portion of the `robomaster` conda
+# environment on this machine. The environment also reuses Jetson system
+# bindings for:
+#   - OpenCV: /usr/lib/python3.10/dist-packages/cv2
+#   - TensorRT: /usr/lib/python3.10/dist-packages/tensorrt
+#   - cuSPARSELt libs:
+#       /usr/local/lib/python3.10/dist-packages/nvidia/cusparselt/lib
+#
+# Base Python packages
+numpy==1.26.4
+scipy==1.11.4
+Pillow==9.0.1
+matplotlib==3.5.1
+tqdm==4.67.3
+pyserial==3.5
+PyYAML==6.0.3
+requests==2.33.0
+psutil==7.2.2
+py-cpuinfo==9.0.0
+pandas==2.3.3
+seaborn==0.13.2
+ninja==1.13.0
+ultralytics==8.3.240
+ultralytics-thop==2.0.18
+
+# Jetson-specific PyTorch stack
+# 1) Install NVIDIA's JetPack 6.0 wheel:
+#    python -m pip install \
+#      https://developer.download.nvidia.com/compute/redist/jp/v60/pytorch/\
+#      torch-2.4.0a0+3bcc3cddb5.nv24.07.16234504-cp310-cp310-linux_aarch64.whl
+#
+# 2) Build torchvision against that torch:
+#    git clone --branch v0.19.0 --depth 1 https://github.com/pytorch/vision.git /tmp/vision-0.19.0
+#    cd /tmp/vision-0.19.0
+#    FORCE_CUDA=1 TORCH_CUDA_ARCH_LIST=8.7 MAX_JOBS=4 \
+#      python -m pip install --no-cache-dir --no-deps --no-build-isolation .

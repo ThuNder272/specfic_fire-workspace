@@ -1,0 +1,30 @@
+[Unit]
+Description=Specific Fire Aim Scheduler
+After=network-online.target graphical.target display-manager.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nvidia
+PermissionsStartOnly=true
+WorkingDirectory=/home/nvidia/Desktop/specific_fire
+Environment=PYTHONUNBUFFERED=1
+Environment=PATH=/home/nvidia/miniforge3/envs/robomaster/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=LD_LIBRARY_PATH=/home/nvidia/miniforge3/envs/robomaster/lib:/usr/local/lib/python3.10/dist-packages/nvidia/cusparselt/lib:/usr/local/cuda-12.2/targets/aarch64-linux/lib
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/run/user/1000/gdm/Xauthority
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+ExecStartPre=/bin/mkdir -p /home/nvidia/Desktop/specific_fire/logs
+ExecStartPre=/bin/chown nvidia:nvidia /home/nvidia/Desktop/specific_fire/logs
+ExecStartPre=/usr/sbin/nvpmodel -m 0
+ExecStartPre=/usr/bin/jetson_clocks
+ExecStartPre=/bin/sleep 5
+Environment=DAHENG_CONFIG_PATH=/home/nvidia/Desktop/specific_fire/MER-139-210U3C(KE0210010002).txt
+ExecStart=/bin/bash -lc 'exec /home/nvidia/Desktop/specific_fire/service_bootstrap.sh >> /home/nvidia/Desktop/specific_fire/logs/service.stdout.log 2>> /home/nvidia/Desktop/specific_fire/logs/service.stderr.log'
+Restart=on-failure
+RestartSec=2
+
+
+[Install]
+WantedBy=graphical.target

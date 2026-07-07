@@ -1,0 +1,7 @@
+path: /home/nvidia/paper_arm/jiaozhun
+train: /home/nvidia/paper_arm/jiaozhun
+val: /home/nvidia/paper_arm/jiaozhun
+nc: 2
+names:
+  - RED
+  - BLUE

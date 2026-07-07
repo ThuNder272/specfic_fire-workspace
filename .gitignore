@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Model weights and engines
+*.pt
+*.pth
+*.engine
+*.onnx
+*.trt
+oldWeights/
+coordinate_prediction_models/
+
+# Recordings and test media
+recordings/
+*.avi
+*.mp4
+
+# Logs and runtime data
+logs/
+*.log
+
+# IDE / OS
+.DS_Store
+.idea/
+.vscode/

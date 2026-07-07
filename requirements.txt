@@ -1,0 +1,25 @@
+# Recommended: use the existing conda env `robomaster` (Python 3.10)
+# and then install/update these pip packages with:
+#   pip install -r requirements.txt
+
+# Core runtime
+numpy>=2.2,<2.3
+opencv-python>=4.12,<4.13
+matplotlib>=3.10,<3.11
+Pillow>=12,<13
+tqdm>=4.67,<5
+
+# Model inference / training
+torch>=2.9,<2.10
+torchvision>=0.24,<0.25
+scipy>=1.15,<1.16
+ultralytics>=8.3.240,<8.4
+
+# Serial communication
+pyserial>=3.5,<4
+
+# Notes
+# 1. Daheng camera support uses the vendored `gxipy/` package in this repo,
+#    but still requires Daheng Galaxy SDK libraries to be installed on the system.
+# 2. If you switch YOLO weights to `.engine` or `.onnx`, extra runtime deps
+#    such as TensorRT / onnxruntime may be needed and are not installed here.
