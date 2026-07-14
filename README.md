@@ -211,53 +211,99 @@ python aim_scheduler.py --port /dev/ttyUSB0 --baud 115200 --rate 50 --show-windo
 - **绿色曲线**：电机真实反馈 yaw/pitch
 - **latency=XX.Xms**：单程通信延迟（需电控回传视觉时间戳）
 
-##### 本机电脑启动（可以）
+说明：
 
-本机可以先把可视化界面跑起来。若没有大恒相机，用电脑摄像头；没有电控串口时，蓝线还能看，绿线和真实 `latency` 需要电控回传：
+- 图画的是 **云台瞄准角**，不是底盘左右平移
+- `--gun-offset-y` 是必填参数（枪口相对相机光心 y 方向偏移，单位毫米）
+- 延迟可视化默认开启；关闭用 `--no-latency-viz`
+
+##### 本机电脑启动
+
+本机若 `robomasterc` 缺 `cv2`，不要用这个环境，改用系统 Python（已装 OpenCV GUI）：
 
 ```bash
-conda activate robomasterc   # 或你平时用的 conda 环境
+conda deactivate
+cd /path/to/specfic_fire1
 
-# 本机：电脑摄像头 + 有窗口 + 延迟可视化（默认开启）
-python aim_scheduler.py \
+# 本机：电脑摄像头 + 窗口 + 延迟可视化
+/usr/bin/python3 aim_scheduler.py \
   --use-opencv \
   --show-window \
+  --gun-offset-y 42 \
+  --camera-id 0 \
   --port /dev/ttyUSB0 --baud 115200 --rate 50
 ```
 
 本机说明：
 
 - `--use-opencv`：不用大恒，改用本机摄像头
-- 若串口不存在，发送/电控回传可能失败，绿线可能没有、`latency` 为 `n/a`
-- 只想确认画面对不对、蓝线曲线是否出现时，本机这样就够
+- 若串口打不开，程序仍会跑，但绿线和真实 `latency` 通常没有
+- 不要安装 `opencv-python-headless`，否则会出现摄像头读到了但**没有窗口**
+- 手机屏幕上的装甲板照片只适合粗测检测；跟枪/延迟请用真机
 
-##### 真机启动（接相机 + 电控串口）
+##### Jetson NX / 车上真机启动
+
+NX 上常用大恒相机 + `/dev/ttyTHS1`，并开窗口看曲线：
 
 ```bash
-# USB 转串口常见写法
-python aim_scheduler.py \
-  --port /dev/ttyUSB0 --baud 115200 --rate 50 \
-  --show-window
+cd /path/to/specfic_fire1
+# NX 上按实际环境激活，例如：
+# source ~/miniforge3/etc/profile.d/conda.sh && conda activate robomaster
 
-# Jetson / 哨兵常用串口
 python aim_scheduler.py \
-  --port /dev/ttyTHS1 --baud 115200 --rate 50 \
+  --gun-offset-y 42 \
+  --show-window \
+  --port /dev/ttyTHS1 --baud 115200 \
+  --target-color red \
+  --bullet-speed 50 \
+  --system-latency-ms 255 \
+  --exclude-class-ids 11 \
+  --ec-t0-ms 35 \
+  --max-yaw-rate 400 \
+  --max-pitch-rate 200
+```
+
+若工程路径与本机 service 脚本一致，也可参考：
+
+```bash
+# 见仓库内 service_bootstrap.sh（默认无窗口打印过多 TX；调试可视化请加 --show-window）
+/home/nvidia/miniforge3/envs/robomaster/bin/python \
+  /home/nvidia/Desktop/specific_fire/aim_scheduler.py \
+  --gun-offset-y 42 \
   --show-window \
   --target-color red \
-  --system-latency-ms 255
+  --port /dev/ttyTHS1 --baud 115200 \
+  --bullet-speed 50 \
+  --system-latency-ms 255 \
+  --exclude-class-ids 11 \
+  --ec-t0-ms 35 \
+  --max-yaw-rate 400 \
+  --max-pitch-rate 200
 ```
+
+USB 转串口车上设备：
+
+```bash
+python aim_scheduler.py \
+  --gun-offset-y 42 \
+  --show-window \
+  --port /dev/ttyUSB0 --baud 115200 --rate 50
+```
+
+##### 其它常用开关
 
 关闭可视化：
 
 ```bash
-python aim_scheduler.py --port /dev/ttyUSB0 --no-latency-viz --show-window
+python aim_scheduler.py --gun-offset-y 42 --port /dev/ttyTHS1 --no-latency-viz --show-window
 ```
 
 调整滚动窗口或导出 CSV（供 VOFA+ / 离线分析）：
 
 ```bash
 python aim_scheduler.py \
-  --port /dev/ttyUSB0 --baud 115200 --rate 50 \
+  --gun-offset-y 42 \
+  --port /dev/ttyTHS1 --baud 115200 \
   --show-window \
   --latency-viz-window-s 10.0 \
   --latency-viz-csv latency_viz.csv
@@ -267,7 +313,9 @@ python aim_scheduler.py \
 
 ```bash
 python aim_scheduler.py \
-  --port /dev/ttyUSB0 --no-show-window \
+  --gun-offset-y 42 \
+  --port /dev/ttyTHS1 \
+  --no-show-window \
   --latency-viz-csv latency_viz.csv
 ```
 
