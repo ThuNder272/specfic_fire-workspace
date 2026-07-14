@@ -211,17 +211,35 @@ python aim_scheduler.py --port /dev/ttyUSB0 --baud 115200 --rate 50 --show-windo
 - **绿色曲线**：电机真实反馈 yaw/pitch
 - **latency=XX.Xms**：单程通信延迟（需电控回传视觉时间戳）
 
-默认开启，带显示窗口直接运行：
+##### 本机电脑启动（可以）
+
+本机可以先把可视化界面跑起来。若没有大恒相机，用电脑摄像头；没有电控串口时，蓝线还能看，绿线和真实 `latency` 需要电控回传：
 
 ```bash
+conda activate robomasterc   # 或你平时用的 conda 环境
+
+# 本机：电脑摄像头 + 有窗口 + 延迟可视化（默认开启）
+python aim_scheduler.py \
+  --use-opencv \
+  --show-window \
+  --port /dev/ttyUSB0 --baud 115200 --rate 50
+```
+
+本机说明：
+
+- `--use-opencv`：不用大恒，改用本机摄像头
+- 若串口不存在，发送/电控回传可能失败，绿线可能没有、`latency` 为 `n/a`
+- 只想确认画面对不对、蓝线曲线是否出现时，本机这样就够
+
+##### 真机启动（接相机 + 电控串口）
+
+```bash
+# USB 转串口常见写法
 python aim_scheduler.py \
   --port /dev/ttyUSB0 --baud 115200 --rate 50 \
   --show-window
-```
 
-哨兵常用示例：
-
-```bash
+# Jetson / 哨兵常用串口
 python aim_scheduler.py \
   --port /dev/ttyTHS1 --baud 115200 --rate 50 \
   --show-window \
